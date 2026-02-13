@@ -177,7 +177,6 @@
 //   }
 // }
 
-
 import 'dart:async';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
@@ -215,15 +214,17 @@ class DatabaseHelper {
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
-    
+
     // 🛠️ SCHEMA SELF-HEALING: Ensure tables exist
     // This fixes the issue where 'notes' or 'collections' tables might be missing
     // if the upgrade logic failed or didn't run.
     await _createTables(db);
-    
+
     // 🛠️ DATA SELF-HEALING: Check if data is missing despite apparent success
     // This fixes the "hidden chapters" bug if the DB was created but not populated
-    final count = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM chapter'));
+    final count = Sqflite.firstIntValue(
+      await db.rawQuery('SELECT COUNT(*) FROM chapter'),
+    );
     if (count == 0) {
       print("⚠️ Database appears empty. Attempting to repopulate...");
       await _populateDatabase(db);
@@ -240,40 +241,46 @@ class DatabaseHelper {
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     print("Upgrading database from $oldVersion to $newVersion");
-    
+
     if (oldVersion < 2) {
       // Version 2: Added favorites
       try {
-        await db.execute('ALTER TABLE hadith ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0');
-      } catch (e) { 
+        await db.execute(
+          'ALTER TABLE hadith ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0',
+        );
+      } catch (e) {
         print("Column is_favorite might already exist: $e");
       }
     }
-    
+
     if (oldVersion < 3) {
       // Version 3: Notes, Collections, FTS5
       await _createNotesTable(db);
       await _createCollectionsTables(db);
       await _createFtsTable(db);
-      
+
       // Populate FTS from existing data if upgrade
       try {
-         final count = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM hadith_fts'));
-         if (count == 0) {
-            await db.execute('''
+        final count = Sqflite.firstIntValue(
+          await db.rawQuery('SELECT COUNT(*) FROM hadith_fts'),
+        );
+        if (count == 0) {
+          await db.execute('''
               INSERT INTO hadith_fts(rowid, hadith_text)
               SELECT id, hadith_text FROM hadith
             ''');
-         }
+        }
       } catch (e) {
         print("Error checking/populating FTS during upgrade: $e");
       }
     }
-    
+
     if (oldVersion < 4) {
       // Version 4: Add color column to notes
       try {
-        await db.execute('ALTER TABLE notes ADD COLUMN color INTEGER NOT NULL DEFAULT 4294951687');
+        await db.execute(
+          'ALTER TABLE notes ADD COLUMN color INTEGER NOT NULL DEFAULT 4294951687',
+        );
         print("Added color column to notes table");
       } catch (e) {
         print("Column color might already exist in notes: $e");
@@ -299,10 +306,11 @@ class DatabaseHelper {
         FOREIGN KEY (chapter_id) REFERENCES chapter(id) ON DELETE CASCADE
       )
     ''');
-    
+
     await _createNotesTable(db);
     await _createCollectionsTables(db);
     await _createFtsTable(db);
+    await _createBookmarksTable(db);
   }
 
   Future<void> _createNotesTable(Database db) async {
@@ -340,6 +348,16 @@ class DatabaseHelper {
     ''');
   }
 
+  Future<void> _createBookmarksTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS bookmarks(
+        chapter_id INTEGER PRIMARY KEY,
+        hadith_id INTEGER NOT NULL,
+        created_at INTEGER
+      )
+    ''');
+  }
+
   Future<void> _createFtsTable(Database db) async {
     // Wrap in try-catch because FTS5 might not be supported on all devices
     try {
@@ -361,15 +379,23 @@ class DatabaseHelper {
 
     // Use ConflictAlgorithm.replace to avoid 'UNIQUE constraint failed' if partial data exists
     for (var chapter in hadithChapters) {
-      batch.insert('chapter', chapter.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
+      batch.insert(
+        'chapter',
+        chapter.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
     }
     for (var hadith in hadithList) {
-      batch.insert('hadith', hadith.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
+      batch.insert(
+        'hadith',
+        hadith.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
     }
 
     await batch.commit(noResult: true);
     print("Database populated. Inserting FTS...");
-    
+
     try {
       await db.execute('''
         INSERT OR REPLACE INTO hadith_fts(rowid, hadith_text)
@@ -394,19 +420,15 @@ class DatabaseHelper {
         );
       });
     } catch (e) {
-       print("Error getting chapters: $e");
-       // Fatal error recovery: try to populate if empty
-       return [];
+      print("Error getting chapters: $e");
+      // Fatal error recovery: try to populate if empty
+      return [];
     }
   }
 
   Future<Chapter?> getChapterById(int id) async {
     final db = await database;
-    final maps = await db.query(
-      'chapter',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    final maps = await db.query('chapter', where: 'id = ?', whereArgs: [id]);
     if (maps.isNotEmpty) {
       return Chapter(
         id: maps.first['id'] as int,
@@ -430,7 +452,7 @@ class DatabaseHelper {
   Future<Hadith?> getRandomHadith() async {
     final db = await database;
     final maps = await db.rawQuery(
-      'SELECT * FROM hadith ORDER BY RANDOM() LIMIT 1'
+      'SELECT * FROM hadith ORDER BY RANDOM() LIMIT 1',
     );
     if (maps.isNotEmpty) {
       return Hadith.fromMap(maps.first);
@@ -442,12 +464,15 @@ class DatabaseHelper {
     final db = await database;
     try {
       // Use FTS5 MATCH query
-      final maps = await db.rawQuery('''
+      final maps = await db.rawQuery(
+        '''
         SELECT hadith.* FROM hadith 
         JOIN hadith_fts ON hadith.id = hadith_fts.rowid
         WHERE hadith_fts MATCH ?
-      ''', [keyword]);
-      
+      ''',
+        [keyword],
+      );
+
       return maps.map((e) => Hadith.fromMap(e)).toList();
     } catch (e) {
       print("FTS search failed ($e), falling back to LIKE");
@@ -482,7 +507,11 @@ class DatabaseHelper {
 
   // ================== Notes CRUD ==================
 
-  Future<int> addNote(int hadithId, String text, {int color = 0xFFFFC107}) async {
+  Future<int> addNote(
+    int hadithId,
+    String text, {
+    int color = 0xFFFFC107,
+  }) async {
     final db = await database;
     return await db.insert('notes', {
       'hadith_id': hadithId,
@@ -495,7 +524,12 @@ class DatabaseHelper {
   Future<List<Map<String, dynamic>>> getNotes(int hadithId) async {
     final db = await database;
     try {
-      return await db.query('notes', where: 'hadith_id = ?', whereArgs: [hadithId], orderBy: 'created_at DESC');
+      return await db.query(
+        'notes',
+        where: 'hadith_id = ?',
+        whereArgs: [hadithId],
+        orderBy: 'created_at DESC',
+      );
     } catch (e) {
       // If table missing (downgrade/upgrade issue), clean fail
       print("Error getting notes: $e");
@@ -510,7 +544,12 @@ class DatabaseHelper {
 
   Future<int> updateNote(int id, String text) async {
     final db = await database;
-    return await db.update('notes', {'text': text}, where: 'id = ?', whereArgs: [id]);
+    return await db.update(
+      'notes',
+      {'text': text},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   // Get all notes for the global Notes Page
@@ -542,12 +581,12 @@ class DatabaseHelper {
 
   Future<List<Map<String, dynamic>>> getCollections() async {
     final db = await database;
-     try {
-       return await db.query('collections', orderBy: 'created_at DESC');
-     } catch (e) {
-       print("Error getCollections: $e");
-       return [];
-     }
+    try {
+      return await db.query('collections', orderBy: 'created_at DESC');
+    } catch (e) {
+      print("Error getCollections: $e");
+      return [];
+    }
   }
 
   Future<void> deleteCollection(int id) async {
@@ -564,29 +603,74 @@ class DatabaseHelper {
     }, conflictAlgorithm: ConflictAlgorithm.ignore);
   }
 
-  Future<void> removeHadithFromCollection(int collectionId, int hadithId) async {
+  Future<void> removeHadithFromCollection(
+    int collectionId,
+    int hadithId,
+  ) async {
     final db = await database;
-    await db.delete('collection_items', 
-      where: 'collection_id = ? AND hadith_id = ?', 
-      whereArgs: [collectionId, hadithId]
+    await db.delete(
+      'collection_items',
+      where: 'collection_id = ? AND hadith_id = ?',
+      whereArgs: [collectionId, hadithId],
     );
   }
 
   Future<List<Hadith>> getHadithsInCollection(int collectionId) async {
     final db = await database;
-    final results = await db.rawQuery('''
+    final results = await db.rawQuery(
+      '''
       SELECT h.* FROM hadith h
       INNER JOIN collection_items ci ON h.id = ci.hadith_id
       WHERE ci.collection_id = ?
-    ''', [collectionId]);
+    ''',
+      [collectionId],
+    );
     return results.map((e) => Hadith.fromMap(e)).toList();
+  }
+
+  // ================== Bookmarks CRUD ==================
+
+  Future<int?> getBookmark(int chapterId) async {
+    final db = await database;
+    final maps = await db.query(
+      'bookmarks',
+      where: 'chapter_id = ?',
+      whereArgs: [chapterId],
+    );
+    if (maps.isNotEmpty) {
+      return maps.first['hadith_id'] as int;
+    }
+    return null;
+  }
+
+  Future<void> setBookmark(int chapterId, int hadithId) async {
+    final db = await database;
+    await db.insert('bookmarks', {
+      'chapter_id': chapterId,
+      'hadith_id': hadithId,
+      'created_at': DateTime.now().millisecondsSinceEpoch,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> removeBookmark(int chapterId) async {
+    final db = await database;
+    await db.delete(
+      'bookmarks',
+      where: 'chapter_id = ?',
+      whereArgs: [chapterId],
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getAllBookmarks() async {
+    final db = await database;
+    return await db.query('bookmarks', orderBy: 'created_at DESC');
   }
 
   // 🆕 Reset Function (Force Wipe)
   Future<void> resetDatabase() async {
     final databasePath = await getDatabasesPath();
     final path = join(databasePath, _databaseName);
-    
+
     if (_database != null && _database!.isOpen) {
       await _database!.close();
     }
@@ -595,7 +679,7 @@ class DatabaseHelper {
     // Delete the file
     await deleteDatabase(path);
     print("Database deleted. Re-initializing...");
-    
+
     // This will trigger creation and population again
     await database;
   }

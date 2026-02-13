@@ -26,7 +26,6 @@ const String dailyHadithTask = "dailyHadithTask";
 // const String dailyHadithTask = "dailyHadithTask";
 // Removed global flutterLocalNotificationsPlugin as we use NotificationHelper
 
-
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -37,16 +36,22 @@ Future<void> main() async {
   }
 
   try {
-    await DatabaseHelper.instance.resetDatabase();
+    // NOTE: Removing unconditional DB reset on startup. Resetting the
+    // database on every app launch caused user data (favorites/notes/collections)
+    // to be lost. Keep the reset only for debugging purposes.
+    // If you need to force a reset during development, set a debug flag.
+    // Example: `const bool forceReset = bool.fromEnvironment('FORCE_DB_RESET');`
+    // Warm up DB (no reset) so tables/migrations run on launch
+    await DatabaseHelper.instance.database;
   } catch (e) {
-    debugPrint('Database reset error: $e');
+    debugPrint('Database init encountered an error: $e');
   }
 
   tz.initializeTimeZones();
   tz.setLocalLocation(tz.getLocation(tz.local.name));
 
   await NotificationHelper.initNotifications();
-  
+
   // Initialize Google Mobile Ads
   await AdService.initialize();
 
@@ -58,9 +63,13 @@ Future<void> main() async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
-        ChangeNotifierProvider(create: (_) => FavoritesProvider()..loadFavorites()),
+        ChangeNotifierProvider(
+          create: (_) => FavoritesProvider()..loadFavorites(),
+        ),
         ChangeNotifierProvider(create: (_) => BookmarksProvider()),
-        ChangeNotifierProvider(create: (_) => UsageTracker()..loadData()), // ✅ هنا
+        ChangeNotifierProvider(
+          create: (_) => UsageTracker()..loadData(),
+        ), // ✅ هنا
       ],
       child: const MyApp(),
     ),
@@ -74,7 +83,7 @@ void callbackDispatcher() {
     try {
       final Hadith? hadith = await DatabaseHelper.instance.getRandomHadith();
       if (hadith != null) {
-          await NotificationHelper.showDailyNotification(hadith);
+        await NotificationHelper.showDailyNotification(hadith);
       }
     } catch (e) {
       debugPrint('Notification error: $e');
@@ -158,11 +167,11 @@ class UsageTracker extends ChangeNotifier {
   Future<void> stopAndSave() async {
     _timer?.cancel();
     _timer = null;
-    
+
     // Save current values (already incremented by timer)
     await UsageService.saveDailySeconds(dailySeconds);
     await UsageService.saveTotalSeconds(totalSeconds);
-    
+
     _sessionStart = null;
     notifyListeners();
   }
