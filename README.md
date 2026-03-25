@@ -263,7 +263,7 @@ We follow [Conventional Commits](https://www.conventionalcommits.org/):
 This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
 
 ---
-
+## ⭐ If you like this project, consider sponsoring me
 ## 💬 Contact
 
 For inquiries, suggestions, or collaborations:

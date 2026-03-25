@@ -171,12 +171,34 @@ class _StatisticsPageState extends State<StatisticsPage>
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              '$streak',
+                              '$streak 🔥',
                               style: const TextStyle(
                                 fontSize: 28,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
+                            if (streak >= 30)
+                              const Padding(
+                                padding: EdgeInsets.only(top: 4.0),
+                                child: Text(
+                                  'شهر كامل! 🏆',
+                                  style: TextStyle(
+                                    color: Colors.amber,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              )
+                            else if (streak >= 7)
+                              const Padding(
+                                padding: EdgeInsets.only(top: 4.0),
+                                child: Text(
+                                  'أسبوع متواصل! 🔥',
+                                  style: TextStyle(
+                                    color: Colors.orange,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
                           ],
                         ),
                       ),
@@ -281,6 +303,68 @@ class _StatisticsPageState extends State<StatisticsPage>
               textAlign: TextAlign.center,
             ),
 
+            const SizedBox(height: 18),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'آخر 7 أيام',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.primary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        height: 130,
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: last7Days.entries.map((entry) {
+                            final max = last7Days.values.fold<int>(
+                              1,
+                              (p, e) => e > p ? e : p,
+                            );
+                            final heightFactor = max == 0
+                                ? 0.0
+                                : (entry.value / max);
+                            final label = '${entry.key.day}/${entry.key.month}';
+                            return Expanded(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  Container(
+                                    height: 90 * heightFactor + 6,
+                                    margin: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.primary.withOpacity(0.85),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    label,
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
             const Divider(height: 40, thickness: 2),
           ],
         ),
